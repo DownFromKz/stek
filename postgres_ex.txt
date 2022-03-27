@@ -1,0 +1,47 @@
+1)
+CREATE OR REPLACE FUNCTION select_orders_by_item_name(item text) RETURNS TABLE(row_id integer, name_item text, count_item integer) AS $$
+   SELECT orders.row_id, customers.name_customer, count(orders.row_id) as count_item FROM orders 
+    JOIN order_items ON order_items.order_id = orders.row_id 
+    JOIN customers ON orders.customer_id = customers.row_id
+    WHERE order_items.name_item = item
+    group by orders.row_id, customers.name_customer;
+$$ LANGUAGE SQL;
+
+2)
+CREATE OR REPLACE FUNCTION calculate_total_price_for_orders_group(group_id integer) RETURNS integer AS $$
+DECLARE
+    is_group text;
+    answer integer;
+BEGIN
+    SELECT group_name INTO is_group FROM orders WHERE row_id = group_id;
+
+    IF is_group ISNULL THEN 
+        RETURN sum(order_items.price)
+        FROM order_items
+        WHERE order_items.order_id = group_id;
+    ELSE
+        WITH RECURSIVE a AS (
+            SELECT row_id, parent_id, group_name
+            FROM orders
+            WHERE parent_id = group_id
+            UNION ALL
+            SELECT d.row_id, d.parent_id, d.group_name
+            FROM orders d
+            JOIN a ON a.row_id = d.parent_id )
+
+            SELECT sum(price) INTO answer FROM a 
+            JOIN order_items ON order_items.order_id = a.row_id
+            WHERE group_name ISNULL;
+            RETURN answer;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+3) 
+SELECT customers.row_id, customers.name_customer
+FROM orders
+JOIN order_items ON orders.row_id = order_items.order_id
+JOIN customers ON customers.row_id = orders.customer_id
+where extract(YEAR FROM orders.registered_at) = 2020
+group by customers.name_customer, customers.row_id
+HAVING COUNT(DISTINCT order_items.order_id) = COUNT(DISTINCT CASE WHEN order_items.name_item ='Кассовый аппарат' THEN order_items.order_id END)
